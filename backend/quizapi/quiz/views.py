@@ -59,22 +59,34 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from langchain_ollama import OllamaLLM 
+from langchain_ollama import OllamaLLM
 
-llm = OllamaLLM(model="llama3.1") 
+llm = OllamaLLM(model="llama3.1")
 
-@api_view(['GET'])
+@api_view(['POST']) 
 def generate_question(request):
     try:
-        print("hello from generate question")
+        past_questions = request.data.get("past_questions", [])  
+        print("Received past questions: ", past_questions)
+
         prompt = (
-    "Generate a theoretical interview question about data structures that tests a candidate's knowledge. "
-    "The question should involve concepts like arrays, linked lists, stacks, queues, trees, or graphs. "
-    "Make sure to focus on questions where the candidate is expected to answer verbally, "
-    "and provide only the question without any solutions or additional context."
+            "Generate a theoretical interview question about data structures that tests a candidate's knowledge. "
+            "The question should involve concepts like arrays, linked lists, stacks, queues, trees, or graphs. "
+            "Make sure to focus on questions where the candidate is expected to answer verbally, "
+            "and avoid repeating any of these past questions:\n" + 
+            "\n".join(past_questions) +
+            "\nProvide only the question without any solutions or additional context."
         )
-        question = llm.invoke(prompt) 
-        return Response({"question": question}, status=status.HTTP_200_OK)
+
+        question = llm.invoke(prompt).strip()
+
+        if question not in past_questions:
+            past_questions.append(question)
+        else:
+            return Response({"error": "Duplicate question generated."}, status=status.HTTP_409_CONFLICT)
+
+        return Response({"question": question, "past_questions": past_questions}, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -83,22 +95,24 @@ def validate_answer(request):
     try:
         question = request.data.get('question')
         answer = request.data.get('answer')
+
         prompt = (
             f"Question: {question}\n"
             f"Answer: {answer}\n"
-            "Is the answer correct according to the question? Respond only with 'yes' or 'no'. "
-            "Do not give any type of short or long description; I want one word: yes or no."
+            "Is the answer correct according to the question? Respond only with 'yes' or 'no'."
         )
-        print(prompt)
 
-        response = llm.invoke(prompt) 
-        print(response)
+        response = llm.invoke(prompt).strip().lower().rstrip('.').rstrip(',')
+        is_correct = response in ["yes", "no"]
 
-        cleaned_response = response.strip().lower().rstrip('.').rstrip(',')
-        
-        is_correct = cleaned_response in ["yes", "no"]
-        print(cleaned_response)
-        
-        return Response({"is_correct": cleaned_response}, status=status.HTTP_200_OK)
+        if is_correct and response == "yes":
+            message = f"Correct answer for: {question}"
+        else:
+            message = f"Incorrect answer for: {question}"
+
+        print(message)
+
+        return Response({"is_correct": response}, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
