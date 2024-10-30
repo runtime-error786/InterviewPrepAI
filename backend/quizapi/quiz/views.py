@@ -78,7 +78,7 @@ def generate_question(request):
             "\nProvide only the question without any solutions or additional context."
         )
 
-        question = llm.invoke(prompt).strip()
+        question = llm.invoke(prompt)
 
         if question not in past_questions:
             past_questions.append(question)
@@ -101,7 +101,7 @@ def validate_answer(request):
             f"Answer: {answer}\n"
             "Is the answer correct according to the question? Respond only with 'yes' or 'no'."
         )
-
+        print(prompt)
         response = llm.invoke(prompt).strip().lower().rstrip('.').rstrip(',')
         is_correct = response in ["yes", "no"]
 
